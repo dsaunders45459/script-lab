@@ -1,4 +1,4 @@
-import { Component, HostListener, AfterViewInit, ViewChild, ElementRef } from '@angular/core';
+import { Component, Input, HostListener, AfterViewInit, ViewChild, ElementRef } from '@angular/core';
 import { Dictionary } from '@microsoft/office-js-helpers';
 import * as fromRoot from '../reducers';
 import { Store } from '@ngrx/store';
@@ -21,9 +21,9 @@ import { debounce } from 'lodash';
     `
 })
 export class Editor implements AfterViewInit {
-    private _monacoEditor: monaco.editor.IStandaloneCodeEditor;
     @ViewChild('editor') private _editor: ElementRef;
-    private _readonly: boolean;
+    @Input() isViewMode: boolean;
+    private _monacoEditor: monaco.editor.IStandaloneCodeEditor;
 
     tabs = new Dictionary<IMonacoEditorState>();
     currentState: IMonacoEditorState;
@@ -39,7 +39,11 @@ export class Editor implements AfterViewInit {
      * Initialize the component and subscribe to all the necessary actions.
      */
     async ngAfterViewInit() {
-        this._monacoEditor = await this._monaco.create(this._editor, { theme: 'vs' });
+        let _overrides = { theme: 'vs' };
+        if (this.isViewMode) {
+            _overrides['readOnly'] = true;
+        }
+        this._monacoEditor = await this._monaco.create(this._editor, _overrides);
         let editor = this._monacoEditor;
         editor.addAction({
             id: 'trigger-suggest', /* Unique id for action */
@@ -95,7 +99,7 @@ export class Editor implements AfterViewInit {
             .subscribe(() => this._resize());
 
         this._store.select(fromRoot.getTheme)
-            .subscribe(theme => this._monaco.updateOptions(this._monacoEditor, { theme: theme ? 'vs' : 'vs-dark' }));
+            .subscribe(theme => monaco.editor.setTheme(theme ? 'vs' : 'vs-dark'));
 
         this._store.select(fromRoot.getCurrent)
             .filter(data => {
@@ -130,7 +134,7 @@ export class Editor implements AfterViewInit {
                         this.updateIntellisense();
                     }
                     this._monacoEditor.setModel(this.currentState.model);
-                    this._monacoEditor.restoreViewState(this.currentState.viewState);
+                    this._monacoEditor.restoreViewState(this._monacoEditor.saveViewState());
                     this._monacoEditor.focus();
                     this._resize();
                     timer.stop();
@@ -175,7 +179,7 @@ export class Editor implements AfterViewInit {
      * The same update happens even on tab switch.
      */
     private _debouncedInput = debounce(() => {
-        if (!this._readonly) {
+        if (!this.isViewMode) {
             this.currentState.content = this._monacoEditor.getValue();
             this._store.dispatch(new Snippet.SaveAction(this.snippet));
         }
